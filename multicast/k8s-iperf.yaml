@@ -1,0 +1,89 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: iperf-multicast-deployment
+  labels:
+    app: iperf-multicast
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: iperf-multicast
+  template:
+    metadata:
+      labels:
+        app: iperf-multicast
+        node: {NODE}
+    spec:
+      affinity:
+        nodeAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 1
+            preference:
+              matchExpressions:
+              - key: kubernetes.io/hostname
+                operator: In
+                values:
+                - {NODE}
+      tolerations:
+        - key: node-role.kubernetes.io/master
+          operator: Exists
+          effect: NoSchedule
+      containers:
+      - name: iperf-multicast
+        image: mlabbe/iperf
+        args: ['-s', '-u', '-B', '226.94.1.1', '-i 1']
+        ports:
+        - containerPort: 5001
+          name: server
+      terminationGracePeriodSeconds: 0
+
+---
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: iperf-multicast
+spec:
+  selector:
+    app: iperf-multicast
+  ports:
+  - protocol: UDP
+    port: 5001
+    targetPort: server
+    
+---
+    
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: iperf-clients
+  labels:
+    app: iperf-client
+spec:
+  selector:
+    matchLabels:
+      app: iperf-client
+  template:
+    metadata:
+      labels:
+        app: iperf-client
+    spec:
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+            - matchExpressions:
+              - key: kubernetes.io/hostname
+                operator: NotIn
+                values:
+                - {NODE}
+      tolerations:
+        - key: node-role.kubernetes.io/master
+          operator: Exists
+          effect: NoSchedule
+      containers:
+      - name: iperf-client
+        image: mlabbe/iperf
+        command: ['/bin/sh', '-c', 'sleep 1d']
+      terminationGracePeriodSeconds: 0
